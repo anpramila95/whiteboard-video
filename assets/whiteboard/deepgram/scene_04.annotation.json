@@ -1,0 +1,66 @@
+{
+  "canvas": {
+    "width": 2048,
+    "height": 1152
+  },
+  "sceneDurationMs": 30719,
+  "elements": [
+    {
+      "id": "elem_1",
+      "label": "Vùng 1",
+      "sequence": 1,
+      "subtitle": "TỐI VỀ ĐẾN NHÀ CỞI ĐÔI GIÀY RA RÃ RỜI TOÀN THÂN BẠN LẠI TỰ TRÁCH MÌNH",
+      "region": {
+        "x": 0,
+        "y": 0,
+        "width": 682,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 0,
+        "durationMs": 5360,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_2",
+      "label": "Vùng 2",
+      "sequence": 2,
+      "subtitle": "HÔM NAY MÌNH NÓI CÂU ĐÓ HÌNH NHƯ HƠI VÔ DUYÊN HÌNH NHƯ SẾP NHÍU MÀY LÀ VÌ KHÔNG HÀI LÒNG VỚI MÌNH TẠI SAO MÌNH KHÔNG THỂ KHÔN KHÉO HƠN MỘT CHÚT",
+      "region": {
+        "x": 682,
+        "y": 0,
+        "width": 682,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 5834,
+        "durationMs": 8159,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_3",
+      "label": "Vùng 3",
+      "sequence": 3,
+      "subtitle": "ĐÓ KHÔNG PHẢI LÀ SỰ CẦU TIẾN ĐỪNG NHẦM LẪN GIỮA KHÁT VỌNG VƯƠN LÊN VỚI MỘT BẢN ÁN TÙ TRUNG THÂN mà bạn tự tuyên Cho chính mình sự cầu tiến xuất phát từ niềm Vui được học hỏi còn thứ mà hầu hết chúng ta đang trải Qua là một nỗi Kinh hoàng thường trực",
+      "region": {
+        "x": 1364,
+        "y": 0,
+        "width": 684,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 14634,
+        "durationMs": 16084,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    }
+  ]
+}

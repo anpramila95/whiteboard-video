@@ -1615,9 +1615,26 @@ def transcode_h264(src: Path, dst: Path) -> Path:
       2. PyAV（纯 pip 安装，无需系统 ffmpeg；编码效率稍逊，用 CRF=28 控制体积）
       3. 两者都没有：保留原始 mp4v 编码并告警
     """
-    # 路径1：系统 ffmpeg（推荐，体积最优）
+    # 路径1：系统 ffmpeg（优先使用 NVIDIA GPU NVENC 硬件加速）
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is not None:
+        # Thử dùng NVIDIA NVENC GPU trước
+        nvenc_cmd = [
+            ffmpeg, "-y", "-loglevel", "error",
+            "-i", str(src),
+            "-c:v", "h264_nvenc",
+            "-preset", "p4",
+            "-cq", "22",
+            "-pix_fmt", "yuv420p",
+            str(dst),
+        ]
+        res = subprocess.run(nvenc_cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            src.unlink(missing_ok=True)
+            print(f"  H.264 转码完成(NVIDIA NVENC GPU): {dst}")
+            return dst
+
+        # Nếu GPU không khả dụng, fallback CPU libx264
         cmd = [
             ffmpeg, "-y", "-loglevel", "error",
             "-i", str(src),
@@ -1629,7 +1646,7 @@ def transcode_h264(src: Path, dst: Path) -> Path:
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
             src.unlink(missing_ok=True)
-            print(f"  H.264 转码完成(ffmpeg): {dst}")
+            print(f"  H.264 转码完成(ffmpeg CPU): {dst}")
             return dst
         print(f"  [warn] ffmpeg 转码失败: {res.stderr.strip()}")
 

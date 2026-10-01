@@ -1,0 +1,47 @@
+{
+  "canvas": {
+    "width": 2048,
+    "height": 1152
+  },
+  "sceneDurationMs": 31069,
+  "elements": [
+    {
+      "id": "elem_1",
+      "label": "Vùng 1",
+      "sequence": 1,
+      "subtitle": "rằng tôi không đủ tốt không đủ thông Minh không đủ Xinh đẹp không đủ lương thiện và nếu tôi không gồng mình lên từng giây từng phút thế giới sẽ nhận Ra bộ mặt thật đáng xấu hổ của tôi và tống khứ tôi Ra khỏi cuộc đời họ",
+      "region": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 0,
+        "durationMs": 13840,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_2",
+      "label": "Vùng 2",
+      "sequence": 2,
+      "subtitle": "HÃY NHÌN VÀO CÁCH MỘT NGƯỜI BÌNH THƯỜNG SỐNG MỘT NGÀY CỦA MÌNH TỪ LÚC MỞ MẮT THỨC DẬY CUỘC CHIẾN ĐÃ BẮT ĐẦU BẠN NHÌN VÀO ĐỒNG HỒ VÀ Ý NGHĨ ĐẦU TIÊN XUẤT HIỆN LÀ MÌNH LẠI DẬY MUỘN RỒI NHÌN VÀO GƯƠNG MẶT NGÁI NGỦ TRONG GƯƠNG DẠO NÀY MÌNH GIÀ ĐI XẤU XÍ VÀ TÀN TẠ QUÁ",
+      "region": {
+        "x": 1024,
+        "y": 0,
+        "width": 1024,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 14704,
+        "durationMs": 16364,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    }
+  ]
+}

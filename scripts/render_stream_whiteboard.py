@@ -72,10 +72,17 @@ class RegionStreamRenderer:
                  hand_png: Path | None, bare_tip: bool) -> None:
         self.cfg = cfg
         self.ann = annotation
-        self.canvas_bgr = sr._hex_to_bgr(cfg.canvas_hex)
+
+        # Tự động trích xuất màu nền chuẩn từ 4 góc của ảnh đầu vào để màu canvas khớp 100%
+        h0, w0 = image_bgr.shape[:2]
+        margin0 = max(5, min(h0, w0) // 40)
+        corners0 = [
+            image_bgr[:margin0, :margin0], image_bgr[:margin0, -margin0:],
+            image_bgr[-margin0:, :margin0], image_bgr[-margin0:, -margin0:]
+        ]
+        self.canvas_bgr = np.median(np.concatenate([c.reshape(-1, 3) for c in corners0]), axis=0).astype(np.uint8)
 
         # 输出尺寸：长边限到 cap，对齐到 grid_edge 的偶数倍（编码要求偶数）
-        h0, w0 = image_bgr.shape[:2]
         scale = cfg.cap_long_edge / max(h0, w0)
         align = cfg.grid_edge if cfg.grid_edge % 2 == 0 else cfg.grid_edge * 2
         w = max(align, (int(round(w0 * scale)) // align) * align)
@@ -97,6 +104,10 @@ class RegionStreamRenderer:
         self.active_all = sr._active_mask(self.thresh_map, cfg.grid_edge, cfg.ink_threshold)
         self.ink_pixels = self.thresh_map < cfg.ink_threshold
         self.ink_paint = np.repeat(self.thresh_map[:, :, None], 3, axis=2).astype(np.float32)
+
+        # Tính toán mặt nạ nội dung thực tế (nét vẽ + khung màu/chữ/icon, loại trừ nền giấy)
+        bg_diff = np.abs(self.color_img.astype(np.int16) - self.canvas_bgr.astype(np.int16)).sum(axis=2)
+        self.foreground_pixels = (bg_diff > 18) | self.ink_pixels
 
         # 背景染成画布底色，让上色阶段背景与起笔一致（不碰墨迹）
         if cfg.match_bg:
@@ -188,8 +199,10 @@ class RegionStreamRenderer:
         seg = np.zeros((self.out_h, self.out_w), dtype=np.uint8)
         thick = max(1, self.cfg.ink_reveal_radius * 2 + 1)
         cv2.line(seg, a, b, 255, thickness=thick, lineType=cv2.LINE_AA)
-        revealed = (seg > 0) & self.ink_pixels & allowed
-        self.drawn[revealed] = self.ink_paint[revealed]
+        target_pixels = self.foreground_pixels if self.cfg.color_weight == 0 else self.ink_pixels
+        revealed = (seg > 0) & target_pixels & allowed
+        source_paint = self.color_img if self.cfg.color_weight == 0 else self.ink_paint
+        self.drawn[revealed] = source_paint[revealed]
 
     def _ink_stamp_cell(self, cell: tuple[int, int], allowed: np.ndarray) -> None:
         r, c = cell
@@ -197,9 +210,9 @@ class RegionStreamRenderer:
         block = self.grid_blocks[r, c]
         allow_block = allowed[r * e:r * e + e, c * e:c * e + e]
         ink_region = (block < self.cfg.ink_threshold) & allow_block
-        paint = np.repeat(block[:, :, None], 3, axis=2)
         target = self.drawn[r * e:r * e + e, c * e:c * e + e]
-        target[ink_region] = paint[ink_region]
+        source = self.color_img[r * e:r * e + e, c * e:c * e + e] if self.cfg.color_weight == 0 else np.repeat(block[:, :, None], 3, axis=2)
+        target[ink_region] = source[ink_region]
 
     def _color_stamp(self, px: int, py: int, disk: np.ndarray, allowed: np.ndarray) -> None:
         radius = self.cfg.brush_radius
@@ -376,8 +389,12 @@ class RegionStreamRenderer:
                 fill_static(start_ms)
 
                 allowed = self._allowed_mask(element, elements[idx + 1:])
-                ink_frames = max(1, round(dur_ms * cfg.ink_weight / weight_sum * cfg.fps / 1000))
-                color_frames = max(1, round(dur_ms * cfg.color_weight / weight_sum * cfg.fps / 1000))
+                if cfg.color_weight == 0:
+                    ink_frames = max(1, round(dur_ms * cfg.fps / 1000))
+                    color_frames = 0
+                else:
+                    ink_frames = max(1, round(dur_ms * cfg.ink_weight / weight_sum * cfg.fps / 1000))
+                    color_frames = max(1, round(dur_ms * cfg.color_weight / weight_sum * cfg.fps / 1000))
 
                 if cfg.ink_path_mode == "skeleton":
                     strokes = self._region_skeleton_strokes(allowed)
@@ -407,16 +424,24 @@ class RegionStreamRenderer:
 
                 cur_ms += ink_frames * ms_per_frame
 
-                if cfg.color_fill == "contour-wipe":
-                    self._wash_contour(writer, color_frames, allowed)
-                else:
-                    self._wash_brush(writer, color_frames, centers, allowed)
-                cur_ms += color_frames * ms_per_frame
+                if color_frames > 0:
+                    if cfg.color_fill == "contour-wipe":
+                        self._wash_contour(writer, color_frames, allowed)
+                    else:
+                        self._wash_brush(writer, color_frames, centers, allowed)
+                    cur_ms += color_frames * ms_per_frame
+                    # Hoàn tất màu cho nội dung của vùng này, giữ nguyên nền canvas đồng nhất không bị giật
+                    self.drawn[self.foreground_pixels & allowed] = self.color_img[self.foreground_pixels & allowed]
+                elif cfg.color_weight == 0:
+                    # Chỉ cập nhật nội dung thực tế (nét, chữ, màu), giữ nguyên nền canvas đồng nhất không bị giật
+                    self.drawn[self.foreground_pixels & allowed] = self.color_img[self.foreground_pixels & allowed]
 
             # 凝视：补到 total_ms，并确保结尾至少停留 0.5s 完整原图
             gaze_until = max(total_ms, cur_ms + 500)
-            # 最终帧显示完整原图（凝视）
-            self.drawn[...] = self.color_img.astype(np.float32)
+            if cfg.color_weight == 0:
+                self.drawn[self.foreground_pixels] = self.color_img[self.foreground_pixels]
+            else:
+                self.drawn[...] = self.color_img.astype(np.float32)
             fill_static(gaze_until)
         finally:
             writer.release()

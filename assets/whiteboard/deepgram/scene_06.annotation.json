@@ -1,0 +1,47 @@
+{
+  "canvas": {
+    "width": 2048,
+    "height": 1152
+  },
+  "sceneDurationMs": 37545,
+  "elements": [
+    {
+      "id": "elem_1",
+      "label": "Vùng 1",
+      "sequence": 1,
+      "subtitle": "họ thú nhận rằng cả đời họ chưa từng có một ngày bình yên họ luôn cảm thấy mình là một kẻ mạo danh đang chờ ngày bị lột trần",
+      "region": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 0,
+        "durationMs": 8480,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_2",
+      "label": "Vùng 2",
+      "sequence": 2,
+      "subtitle": "nghịch lý lớn nhất của con người nằm ở chỗ này chúng ta nghĩ rằng nếu mình tự ghét bỏ bản thân đủ nhiều mình sẽ trở nên tốt hơn chúng ta tin vào một thứ kỷ luật tàn bạo ta tự nhủ phải chửi rủa bản thân lười biếng thì mới chịu làm việc phải xỉa xói thân hình béo phó của mình thì mới chịu giảm cân phải luôn thấy mình thiếu sót thì mới không bị tụt lại phía sau nhưng hãy nhìn lại xem sau bao nhiêu năm tự hành hạ bạn đã thực sự hạnh phúc hơn chưa",
+      "region": {
+        "x": 1024,
+        "y": 0,
+        "width": 1024,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 10015,
+        "durationMs": 27530,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    }
+  ]
+}

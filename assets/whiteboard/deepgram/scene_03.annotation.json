@@ -1,0 +1,66 @@
+{
+  "canvas": {
+    "width": 2048,
+    "height": 1152
+  },
+  "sceneDurationMs": 30070,
+  "elements": [
+    {
+      "id": "elem_1",
+      "label": "Vùng 1",
+      "sequence": 1,
+      "subtitle": "MỞ ĐIỆN THOẠI LÊN THẤY ĐỨA BẠN CÙNG TUỔI VỪA MUA NHÀ MUA XE HOẶC MỘT AI ĐÓ ĐĂNG ẢNH GIA ĐÌNH HẠNH PHÚC MÌNH ĐÚNG LÀ MỘT KẺ THẤT BẠI NGẦN NÀY TUỔI ĐẦU MÀ VẪN CHƯA ĐÂU VÀO ĐÂU",
+      "region": {
+        "x": 0,
+        "y": 0,
+        "width": 682,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 0,
+        "durationMs": 10625,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_2",
+      "label": "Vùng 2",
+      "sequence": 2,
+      "subtitle": "BƯỚC CHÂN RA ĐƯỜNG BẠN MANG THEO MỘT LỚP MẶT NẠ DÀY CỘP BẠN PHẢI CƯỜI ĐÚNG LÚC NÓI NHỮNG CÂU NÓI VỪA TAI NGƯỜI KHÁC LÀM VIỆC CẬT LỰC MƯỜI HAI TIẾNG MỘT NGÀY KHÔNG DÁM NGHỈ CHỈ VÌ SỢ RẰNG NẾU MÌNH DỪNG LẠI NẾU MÌNH ĐỂ LỘ RA MỘT GIÂY PHÚT MỆT MỎI HAY LÚNG TÚNG",
+      "region": {
+        "x": 682,
+        "y": 0,
+        "width": 682,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 11025,
+        "durationMs": 15845,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_3",
+      "label": "Vùng 3",
+      "sequence": 3,
+      "subtitle": "NGƯỜI TA SẼ PHÁT HIỆN RA MÌNH LÀ KẺ VÔ DỤNG",
+      "region": {
+        "x": 1364,
+        "y": 0,
+        "width": 684,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 27270,
+        "durationMs": 2799,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    }
+  ]
+}

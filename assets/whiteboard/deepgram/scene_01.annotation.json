@@ -1,0 +1,85 @@
+{
+  "canvas": {
+    "width": 2048,
+    "height": 1152
+  },
+  "sceneDurationMs": 45520,
+  "elements": [
+    {
+      "id": "elem_1",
+      "label": "Vùng 1",
+      "sequence": 1,
+      "subtitle": "Mọi",
+      "region": {
+        "x": 0,
+        "y": 0,
+        "width": 512,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 0,
+        "durationMs": 1120,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_2",
+      "label": "Vùng 2",
+      "sequence": 2,
+      "subtitle": "người xung quanh vỗ tay cấp trên khen ngợi đồng nghiệp nhìn bạn với ánh mắt ngưỡng mộ nhưng ngay khi bước vào nhà vệ sinh đóng chặt cánh cửa lại và nhìn vào gương ý nghĩ đầu tiên xẹt qua đầu bạn không phải là tự hào",
+      "region": {
+        "x": 512,
+        "y": 0,
+        "width": 512,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 2320,
+        "durationMs": 12480,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_3",
+      "label": "Vùng 3",
+      "sequence": 3,
+      "subtitle": "nó là một sự lạnh lẽo chạy dọc sống lưng mình vừa lừa được họ nếu họ biết con người thật của mình kém cỏi chắp vá và đầy rẫy lỗi lầm thế nào họ sẽ bảy vọng đến mức nào cảm giác đó không xa lạ",
+      "region": {
+        "x": 1024,
+        "y": 0,
+        "width": 512,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 15415,
+        "durationMs": 13760,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_4",
+      "label": "Vùng 4",
+      "sequence": 4,
+      "subtitle": "nó có một cái tên rất nặng nề mà nhà tâm lý học kiêm thiền sư Tara brak gọi là cơn mê muội của sự bất toàn nó là niềm tin bám rễ sâu trong xương tủy của hàng triệu con người rằng sâu thẳm bên trong tôi có một khuyết tật nào đó không thể sửa chữa",
+      "region": {
+        "x": 1536,
+        "y": 0,
+        "width": 512,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 29680,
+        "durationMs": 15840,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    }
+  ]
+}

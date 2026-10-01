@@ -1,0 +1,47 @@
+{
+  "canvas": {
+    "width": 2048,
+    "height": 1152
+  },
+  "sceneDurationMs": 34315,
+  "elements": [
+    {
+      "id": "elem_1",
+      "label": "Vùng 1",
+      "sequence": 1,
+      "subtitle": "chúng ta sống như thể bản thân Sinh Ra đã là một món hàng lỗi và cả cuộc đời này là một nỗ lực tuyệt vọng để chắp vá che đậy đánh bóng cái món hàng lỗi đó hòng kiếm được một chút tình thương một chút công nhận từ người đời",
+      "region": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 0,
+        "durationMs": 14405,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    },
+    {
+      "id": "elem_2",
+      "label": "Vùng 2",
+      "sequence": 2,
+      "subtitle": "Tara Break trong cuốn sách chấp nhận vô điều kiện kể lại rất nhiều câu chuyện của những con người kiệt xuất có những vị giáo sư đầu ngành những bác sĩ phẫu thuật cứu sống hàng ngàn người những doanh nhân điều hành đế chế triệu đô nhưng khi ngồi xuống trong phòng tham vấn tâm lý họ òa khóc như một đứa trẻ bị bỏ rơi",
+      "region": {
+        "x": 1024,
+        "y": 0,
+        "width": 1024,
+        "height": 1152
+      },
+      "reveal": {
+        "direction": "top_to_bottom",
+        "startMs": 15940,
+        "durationMs": 18375,
+        "maskPaddingPx": 0,
+        "protectedRegions": []
+      }
+    }
+  ]
+}
