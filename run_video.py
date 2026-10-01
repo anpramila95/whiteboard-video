@@ -163,7 +163,7 @@ def load_scenes_from_text_file(text_path: Path, dg_path: Path) -> list[dict[str,
 
     # Dò tìm mốc bắt đầu của từng dòng theo n-gram anchor
     cursor = 0
-    scene_positions = []
+    start_indices = []
     for idx, (scene_text, prompt) in enumerate(entries):
         cl = clean_txt(scene_text)
         found_pos = -1
@@ -177,34 +177,30 @@ def load_scenes_from_text_file(text_path: Path, dg_path: Path) -> list[dict[str,
         if found_pos == -1:
             found_pos = cursor
 
-        scene_positions.append((found_pos, len(cl), scene_text, prompt))
+        start_indices.append(found_pos)
         cursor = found_pos + int(len(cl) * 0.7)
 
-    # Đảm bảo 100% số dòng trong text.txt đều trở thành cảnh (không bao giờ bị bỏ sót)
+    # Đảm bảo ranh giới giữa các cảnh hoàn toàn liên tục (giữ trọn vẹn 100% khoảng lặng, không lệch âm thanh)
     scenes = []
-    for i in range(len(scene_positions)):
-        start_pos = scene_positions[i][0]
-        scene_len = scene_positions[i][1]
-        scene_text = scene_positions[i][2]
-        prompt = scene_positions[i][3]
+    for i in range(len(start_indices)):
+        scene_text, prompt = entries[i]
+        w_start = char_to_word[min(start_indices[i], len(char_to_word) - 1)]
 
-        if i < len(scene_positions) - 1:
-            end_pos = scene_positions[i + 1][0]
+        # Cảnh đầu bắt đầu từ thời điểm nói đầu tiên, các cảnh sau bắt đầu đúng lúc cảnh trước kết thúc
+        scene_start = dg_words[w_start]["start"] if i == 0 else scenes[-1]["end"]
+
+        # Cảnh kết thúc đúng thời điểm cảnh tiếp theo bắt đầu nói (giữ nguyên khoảng nghỉ cuối cảnh)
+        if i < len(start_indices) - 1:
+            w_next = char_to_word[min(start_indices[i + 1], len(char_to_word) - 1)]
+            scene_end = dg_words[w_next]["start"]
         else:
-            end_pos = total_chars - 1
+            scene_end = dg_words[-1]["end"]
 
-        if end_pos <= start_pos:
-            end_pos = min(total_chars - 1, start_pos + scene_len)
-
-        w_start = char_to_word[min(start_pos, len(char_to_word) - 1)]
-        w_end = char_to_word[min(end_pos, len(char_to_word) - 1)]
-        scene_start = dg_words[w_start]["start"]
-        scene_end = dg_words[w_end]["end"]
         dur_ms = max(1000, int((scene_end - scene_start) * 1000))
 
-        matched = dg_words[w_start : w_end + 1]
-        if not matched:
-            matched = [dg_words[w_start]]
+        # Thu thập các từ thuộc cảnh này
+        w_end_speech = char_to_word[min(start_indices[i + 1] - 1, len(char_to_word) - 1)] if i < len(start_indices) - 1 else len(dg_words) - 1
+        matched = dg_words[w_start : max(w_start + 1, w_end_speech + 1)]
 
         # Chia nhỏ thành các sub-cues để lộ hình dần theo câu
         sub_cues = []
