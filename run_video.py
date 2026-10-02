@@ -480,7 +480,9 @@ def _detect_title_split_y(img_bgr: np.ndarray) -> int | None:
 def _detect_column_slices(img_bgr: np.ndarray, top_y: int | None) -> list[tuple[int, int]]:
     """
     Dùng OpenCV phân tích mật độ nét theo trục X trong phần thân
-    để tìm khe hở tự nhiên giữa các khối nội dung, tránh cắt đôi hộp/chữ.
+    để tự động nhận diện bố cục 2 cột hoặc 3 cột dựa trên rãnh trắng tự nhiên:
+    - Nếu giữa ảnh (46%..54%) là rãnh trắng ngăn cách 2 khối lớn -> chia 2 cột.
+    - Nếu giữa ảnh có thẻ nội dung và 2 bên có rãnh -> chia 3 cột.
     """
     h, w = img_bgr.shape[:2]
     corners = [img_bgr[:30, :30], img_bgr[:30, -30:], img_bgr[-30:, :30], img_bgr[-30:, -30:]]
@@ -493,17 +495,22 @@ def _detect_column_slices(img_bgr: np.ndarray, top_y: int | None) -> list[tuple[
     k = max(7, int(w * 0.015)) | 1
     smooth = np.convolve(col_density, np.ones(k) / k, mode="same")
 
-    # Tìm 2 khe hở tự nhiên cho bố cục 3 cột (trái -> giữa -> phải)
+    peak_total = max(1.0, float(np.max(smooth[int(w * 0.10):int(w * 0.90)])))
+
+    # Kiểm tra khe giữa (46% .. 54%) xem có phải rãnh ngăn cách của bố cục 2 cột không
+    center_start, center_end = int(w * 0.46), int(w * 0.54)
+    center_peak = float(np.max(smooth[center_start:center_end]))
+    center_min_x = center_start + int(np.argmin(smooth[center_start:center_end]))
+
+    # Bố cục 2 cột thực sự: khoảng chính giữa hoàn toàn rỗng (< 10% peak)
+    if center_peak < (0.10 * peak_total):
+        return [(0, center_min_x), (center_min_x, w)]
+
+    # Bố cục 3 cột: tìm 2 khe tự nhiên ở vùng 1/3 và 2/3
     c1_range = (int(w * 0.25), int(w * 0.44))
     c2_range = (int(w * 0.56), int(w * 0.76))
     x1 = c1_range[0] + int(np.argmin(smooth[c1_range[0]:c1_range[1]]))
     x2 = c2_range[0] + int(np.argmin(smooth[c2_range[0]:c2_range[1]]))
-
-    # Kiểm tra trường hợp 2 cột: khe ở chính giữa rỗng hoàn toàn
-    mid_range = (int(w * 0.44), int(w * 0.56))
-    x_mid = mid_range[0] + int(np.argmin(smooth[mid_range[0]:mid_range[1]]))
-    if smooth[x_mid] < (h * 0.02) and np.max(smooth[c1_range[1]:c2_range[0]]) < (h * 0.05):
-        return [(0, x_mid), (x_mid, w)]
 
     return [(0, x1), (x1, x2), (x2, w)]
 
