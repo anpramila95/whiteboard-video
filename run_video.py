@@ -16,6 +16,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+import cv2
 import numpy as np
 import tts_narration as tts  # type: ignore[import-not-found]
 from render_stream_whiteboard import RegionStreamRenderer  # type: ignore[import-not-found]
@@ -435,51 +436,161 @@ def extract_audio_from_master(scenes: list[dict[str, Any]], master_audio: Path, 
     return audio_track
 
 
+def _detect_title_split_y(img_bgr: np.ndarray) -> int | None:
+    """
+    Dùng OpenCV & phân tích hình thái học để phát hiện:
+    - top_split_y: chân dải tiêu đề trên (1 dòng hoặc nhiều dòng, gạch chân)
+    Không tách bottom: 10% đáy vẫn gắn liền liên tục theo từng cột nội dung.
+    """
+    h, w = img_bgr.shape[:2]
+    corners = [img_bgr[:30, :30], img_bgr[:30, -30:], img_bgr[-30:, :30], img_bgr[-30:, -30:]]
+    bg = np.median(np.concatenate([c.reshape(-1, 3) for c in corners]), axis=0)
+    diff = np.linalg.norm(img_bgr.astype(float) - bg, axis=2)
+    ink = (diff > 35).astype(np.uint8)
+
+    contours, _ = cv2.findContours(ink, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Tìm điểm bắt đầu của các khối nội dung ở 2 bên cánh trái/phải
+    flank_y = []
+    for c in contours:
+        x, y, bw, bh = cv2.boundingRect(c)
+        if bh > h * 0.08 and cv2.contourArea(c) > (w * h * 0.003):
+            if x < w * 0.22 or (x + bw) > w * 0.78:
+                if y > h * 0.12:
+                    flank_y.append(y)
+
+    row_density = np.sum(ink, axis=1)
+    k = max(5, int(h * 0.015)) | 1
+    smooth = np.convolve(row_density, np.ones(k) / k, mode="same")
+
+    if flank_y:
+        first_body_y = min(flank_y)
+        search_start = max(int(h * 0.12), first_body_y - int(h * 0.15))
+        search_end = first_body_y
+        if search_end > search_start:
+            return search_start + int(np.argmin(smooth[search_start:search_end]))
+
+    min_top_y, max_top_y = int(h * 0.15), int(h * 0.38)
+    if max_top_y > min_top_y:
+        return min_top_y + int(np.argmin(smooth[min_top_y:max_top_y]))
+
+    return None
+
+
+def _detect_column_slices(img_bgr: np.ndarray, top_y: int | None) -> list[tuple[int, int]]:
+    """
+    Dùng OpenCV phân tích mật độ nét theo trục X trong phần thân
+    để tìm khe hở tự nhiên giữa các khối nội dung, tránh cắt đôi hộp/chữ.
+    """
+    h, w = img_bgr.shape[:2]
+    corners = [img_bgr[:30, :30], img_bgr[:30, -30:], img_bgr[-30:, :30], img_bgr[-30:, -30:]]
+    bg = np.median(np.concatenate([c.reshape(-1, 3) for c in corners]), axis=0)
+    diff = np.linalg.norm(img_bgr.astype(float) - bg, axis=2)
+    ink = (diff > 35).astype(np.uint8)
+
+    body_ink = ink[top_y:] if top_y else ink
+    col_density = np.sum(body_ink, axis=0)
+    k = max(7, int(w * 0.015)) | 1
+    smooth = np.convolve(col_density, np.ones(k) / k, mode="same")
+
+    # Tìm 2 khe hở tự nhiên cho bố cục 3 cột (trái -> giữa -> phải)
+    c1_range = (int(w * 0.25), int(w * 0.44))
+    c2_range = (int(w * 0.56), int(w * 0.76))
+    x1 = c1_range[0] + int(np.argmin(smooth[c1_range[0]:c1_range[1]]))
+    x2 = c2_range[0] + int(np.argmin(smooth[c2_range[0]:c2_range[1]]))
+
+    # Kiểm tra trường hợp 2 cột: khe ở chính giữa rỗng hoàn toàn
+    mid_range = (int(w * 0.44), int(w * 0.56))
+    x_mid = mid_range[0] + int(np.argmin(smooth[mid_range[0]:mid_range[1]]))
+    if smooth[x_mid] < (h * 0.02) and np.max(smooth[c1_range[1]:c2_range[0]]) < (h * 0.05):
+        return [(0, x_mid), (x_mid, w)]
+
+    return [(0, x1), (x1, x2), (x2, w)]
+
+
 # ── BƯỚC TẠO ANNOTATION KHỚP VỚI TIMELINE DEEPGRAM GỐC ──
 def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_start: float, total_ms: int) -> dict[str, Any]:
     h, w = img_bgr.shape[:2]
     elements = []
 
-    # Chọn số vùng phù hợp (3 vùng nếu cảnh dài >= 20s, 2 vùng nếu ngắn)
-    scene_dur_s = total_ms / 1000.0
-    n_splits = 3 if scene_dur_s >= 20.0 else 2
-    col_w = w // n_splits
+    top_split_y = _detect_title_split_y(img_bgr)
 
-    # Phân bổ đều các cues theo dòng thời gian để các vùng trải đều toàn bộ thời lượng cảnh
-    target_bucket_dur = scene_dur_s / n_splits
+    body_y = top_split_y if top_split_y is not None else 0
+    body_h = h - body_y
+
+    cur_seq = 1
+    cur_timeline_ms = 0
+
+    # 1. Title trên đỉnh: vẽ nhanh trước (0.8s - 1.5s), chiều từ trái sang phải
+    if top_split_y is not None:
+        title_dur_ms = min(1500, max(800, int(total_ms * 0.10)))
+        elements.append({
+            "id": f"elem_{cur_seq}",
+            "label": "Tiêu đề trên",
+            "sequence": cur_seq,
+            "subtitle": "Tiêu đề",
+            "region": {
+                "x": 0,
+                "y": 0,
+                "width": w,
+                "height": top_split_y,
+            },
+            "reveal": {
+                "direction": "left_to_right",
+                "startMs": cur_timeline_ms,
+                "durationMs": title_dur_ms,
+                "maskPaddingPx": 0,
+                "protectedRegions": [],
+            },
+        })
+        cur_seq += 1
+        cur_timeline_ms += title_dur_ms
+
+    # 2. Nội dung thân: tự động tìm khe hở tự nhiên giữa các cột bằng OpenCV
+    cols = _detect_column_slices(img_bgr, top_split_y)
+    n_splits = len(cols)
+    body_dur_ms = max(1000, total_ms - cur_timeline_ms)
+
+    # Phân bổ cues đều theo số cột
     buckets: list[list[dict[str, Any]]] = [[] for _ in range(n_splits)]
+    total_dur_s = max(1.0, total_ms / 1000.0)
     for c in cues:
-        b_idx = int((c["start"] - scene_start) / target_bucket_dur)
+        b_idx = int((c["start"] - scene_start) / total_dur_s * n_splits)
         b_idx = min(n_splits - 1, max(0, b_idx))
         buckets[b_idx].append(c)
 
-    cur_timeline_ms = 0
+    # Phân bổ thời gian chuẩn xác, không bao giờ vượt quá total_ms
+    target_bucket_ms = body_dur_ms // n_splits
     for i in range(n_splits):
         b = buckets[i]
         subtitle = " ".join([c["text"] for c in b]) if b else f"Phần {i+1}"
+        rem_columns = n_splits - i
 
-        if b:
-            b_start_ms = max(0, int((b[0]["start"] - scene_start) * 1000))
-            b_end_ms = min(total_ms, int((b[-1]["end"] - scene_start) * 1000))
+        if rem_columns == 1:
+            dur_ms = max(500, total_ms - cur_timeline_ms)
         else:
-            b_start_ms = cur_timeline_ms
-            b_end_ms = int(cur_timeline_ms + target_bucket_dur * 1000)
+            if b:
+                b_end_ms = int((b[-1]["end"] - scene_start) * 1000)
+                dur_ms = max(800, b_end_ms - cur_timeline_ms)
+            else:
+                dur_ms = target_bucket_ms
+            max_allowed = (total_ms - cur_timeline_ms) - (rem_columns - 1) * 800
+            dur_ms = max(800, min(dur_ms, max_allowed))
 
-        # Đảm bảo các vùng nối tiếp nhau liên tục bám sát giọng đọc
-        start_ms = max(cur_timeline_ms, b_start_ms)
-        dur_ms = max(1000, b_end_ms - start_ms)
-        cur_timeline_ms = start_ms + dur_ms
+        start_ms = cur_timeline_ms
+        cur_timeline_ms += dur_ms
 
+        col_x0, col_x1 = cols[i]
         elements.append({
-            "id": f"elem_{i+1}",
-            "label": f"Vùng {i+1}",
-            "sequence": i + 1,
+            "id": f"elem_{cur_seq}",
+            "label": f"Nội dung {i+1}",
+            "sequence": cur_seq,
             "subtitle": subtitle,
             "region": {
-                "x": i * col_w,
-                "y": 0,
-                "width": col_w if i < n_splits - 1 else (w - i * col_w),
-                "height": h,
+                "x": col_x0,
+                "y": body_y,
+                "width": col_x1 - col_x0,
+                "height": body_h,
             },
             "reveal": {
                 "direction": "top_to_bottom",
@@ -489,6 +600,7 @@ def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_s
                 "protectedRegions": [],
             },
         })
+        cur_seq += 1
 
     return {
         "canvas": {"width": w, "height": h},
