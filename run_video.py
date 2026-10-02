@@ -49,20 +49,37 @@ DEFAULT_COLOR_MODE = "brush"
 DEFAULT_SHOW_HAND = True
 
 
-def load_env() -> dict[str, str]:
+def load_env(extra_dir: Path | None = None) -> dict[str, str]:
     env_vars = {}
-    env_file = ROOT_DIR / ".env"
-    if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                env_vars[k.strip()] = v.strip().strip('"').strip("'")
+    candidates = [
+        ROOT_DIR / ".env",
+        ROOT_DIR.parent / ".env",
+        Path.cwd() / ".env",
+    ]
+    if extra_dir:
+        candidates.insert(0, extra_dir / ".env")
+
+    for env_file in candidates:
+        if env_file.exists():
+            for line in env_file.read_text(encoding="utf-8-sig").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env_vars.setdefault(k.strip(), v.strip().strip('"').strip("'"))
     return env_vars
 
 
 ENV = load_env()
 OPENAI_API_KEY = ENV.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+
+# CẤU HÌNH TTS MẶC ĐỊNH TỪ .ENV
+TTS_PROVIDER = ENV.get("TTS_PROVIDER", os.environ.get("TTS_PROVIDER", "api"))
+TTS_API_URL = ENV.get("TTS_API_URL", os.environ.get("TTS_API_URL", "http://localhost:4000/v1/audio/speech"))
+TTS_MODEL = ENV.get("TTS_MODEL", os.environ.get("TTS_MODEL", "speechify"))
+TTS_VOICE = ENV.get("TTS_VOICE", os.environ.get("TTS_VOICE", "vi-VN-NamMinhNeural"))
+TTS_SPEED = float(ENV.get("TTS_SPEED", os.environ.get("TTS_SPEED", "1.0")))
+TTS_WORKERS = int(ENV.get("TTS_WORKERS", os.environ.get("TTS_WORKERS", "5")))
+TTS_RESPONSE_FORMAT = ENV.get("TTS_RESPONSE_FORMAT", os.environ.get("TTS_RESPONSE_FORMAT", "mp3"))
 
 
 def split_deepgram(dg_path: Path, target_sec: float = 30.0, max_sec: float = 38.0) -> list[dict[str, Any]]:
@@ -239,6 +256,199 @@ def load_scenes_from_text_file(text_path: Path, dg_path: Path) -> list[dict[str,
         print(f"  + Cảnh {idx:02d} ({scene_start:.2f}s -> {scene_end:.2f}s, {dur_ms/1000:.1f}s): {prompt[:50]}...")
 
     return scenes
+
+
+# ── PHÁT SINH AUDIO TỪNG CẢNH QUA API TTS (KHI KHÔNG CÓ MASTER_TTS.WAV) ──
+def generate_tts_audio_clip(
+    text: str,
+    out_clip: Path,
+    voice: str | None = None,
+    speed: float | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    response_format: str | None = None,
+) -> float:
+    if out_clip.exists() and out_clip.stat().st_size > 1000:
+        return tts.probe_duration(out_clip)
+
+    out_clip.parent.mkdir(parents=True, exist_ok=True)
+    tts_provider = provider or TTS_PROVIDER
+    tts_api_url = TTS_API_URL
+    tts_model = model or TTS_MODEL
+    tts_voice = voice or TTS_VOICE
+    tts_speed = speed if speed is not None else TTS_SPEED
+    tts_fmt = response_format or TTS_RESPONSE_FORMAT
+
+    # Nếu cấu hình rõ ràng là edge -> gọi trực tiếp edge-tts không qua API
+    if tts_provider.lower() == "edge":
+        tts.synthesize_edge(text, tts_voice, tts_speed, out_clip)
+        trimmed = tts.trim_silence(out_clip)
+        if trimmed != out_clip and trimmed.exists():
+            shutil.copy2(trimmed, out_clip)
+        return tts.probe_duration(out_clip)
+
+    # 1. Gọi API TTS (/v1/audio/speech)
+    try:
+        req_data = json.dumps({
+            "input": text,
+            "provider": tts_provider,
+            "model": tts_model,
+            "voice": tts_voice,
+            "speed": tts_speed,
+            "response_format": tts_fmt,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            tts_api_url,
+            data=req_data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            out_clip.write_bytes(resp.read())
+        return tts.probe_duration(out_clip)
+    except Exception as e:
+        print(f"  [TTS API fallback] Gọi {tts_api_url} ({e}), chuyển sang Edge-TTS...")
+
+    # 2. Fallback sang Edge-TTS nếu API server chưa bật hoặc lỗi
+    tts.synthesize_edge(text, tts_voice, tts_speed, out_clip)
+    trimmed = tts.trim_silence(out_clip)
+    if trimmed != out_clip and trimmed.exists():
+        shutil.copy2(trimmed, out_clip)
+    return tts.probe_duration(out_clip)
+
+
+def _split_text_into_cues(text: str, scene_start: float, total_dur_s: float) -> list[dict[str, Any]]:
+    # Tách câu theo dấu câu (giữ liền dấu vào cuối câu)
+    sentences = re.split(r"(?<=[。！？!?;；\n])|(?<=[.,])\s+", text.strip())
+    chunks = [s.strip() for s in sentences if s.strip()]
+
+    # Nếu câu quá dài (> 60 ký tự), tách tiếp theo cụm từ để hiển thị nhịp nhàng
+    refined_chunks = []
+    for c in chunks:
+        if len(c) > 60:
+            words = c.split()
+            buf = []
+            for w in words:
+                buf.append(w)
+                if len(" ".join(buf)) >= 30:
+                    refined_chunks.append(" ".join(buf))
+                    buf = []
+            if buf:
+                refined_chunks.append(" ".join(buf))
+        else:
+            refined_chunks.append(c)
+
+    if not refined_chunks:
+        refined_chunks = [text.strip() or "Nội dung"]
+
+    total_chars = max(1, sum(len(c) for c in refined_chunks))
+    cues = []
+    curr_t = scene_start
+    for chk in refined_chunks:
+        cue_dur = (len(chk) / total_chars) * total_dur_s
+        cues.append({
+            "start": curr_t,
+            "end": curr_t + cue_dur,
+            "text": chk,
+        })
+        curr_t += cue_dur
+
+    return cues
+
+
+def load_scenes_from_tts(text_path: Path, project_dir: Path) -> list[dict[str, Any]]:
+    print(f"\n=== ĐỌC KỊCH BẢN VÀ SINH AUDIO CHO TỪNG CẢNH (CHẠY {TTS_WORKERS} LUỒNG, KHÔNG DÙNG DEEPGRAM) ===")
+    lines = text_path.read_text(encoding="utf-8").splitlines()
+    entries = []
+    for line in lines:
+        line = line.strip()
+        if not line or (line.startswith("#") and "|" not in line):
+            continue
+        if "|" in line:
+            txt, prompt = line.split("|", 1)
+            entries.append((txt.strip(), prompt.strip()))
+        else:
+            entries.append((line.strip(), ""))
+
+    if not entries:
+        raise ValueError(f"File {text_path.name} không có nội dung hợp lệ.")
+
+    tts_cache_dir = project_dir / "tts-cache"
+    tts_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Chạy 5 luồng song song sinh toàn bộ audio cho các cảnh
+    print(f"Tổng số {len(entries)} cảnh. Đang sinh TTS song song ({TTS_WORKERS} luồng, provider={TTS_PROVIDER}, voice={TTS_VOICE})...")
+    def _worker(item: tuple[int, str, str]) -> tuple[int, Path, float]:
+        idx, txt, _ = item
+        clip_path = tts_cache_dir / f"scene_{idx:02d}.mp3"
+        dur_s = generate_tts_audio_clip(txt, clip_path)
+        return idx, clip_path, dur_s
+
+    tasks = [(i, txt, prompt) for i, (txt, prompt) in enumerate(entries, 1)]
+    audio_results: dict[int, tuple[Path, float]] = {}
+
+    with ThreadPoolExecutor(max_workers=TTS_WORKERS) as ex:
+        futures = [ex.submit(_worker, t) for t in tasks]
+        for f in as_completed(futures):
+            idx, clip_p, dur_s = f.result()
+            audio_results[idx] = (clip_p, dur_s)
+            print(f"  [TTS xong] Cảnh {idx:02d} ({dur_s:.2f}s): {clip_p.name}")
+
+    # 2. Xây dựng danh sách scenes với duration_ms tuân thủ 100% theo thời lượng TTS
+    scenes = []
+    curr_time_s = 0.0
+
+    for idx, (txt, prompt) in enumerate(entries, 1):
+        clip_path, dur_s = audio_results[idx]
+        dur_ms = max(1000, int(round(dur_s * 1000)))
+
+        cues = _split_text_into_cues(txt, curr_time_s, dur_s)
+        scenes.append({
+            "scene_idx": idx,
+            "start": curr_time_s,
+            "end": curr_time_s + dur_s,
+            "duration_ms": dur_ms,
+            "text": txt,
+            "prompt": prompt,
+            "cues": cues,
+            "audio_clip": clip_path,
+        })
+        curr_time_s += dur_s
+
+    print(f"[ok] Đã chuẩn bị xong {len(scenes)} cảnh với tổng thời lượng audio: {curr_time_s:.2f}s")
+    return scenes
+
+
+def concat_scene_audios_and_mux(scenes: list[dict[str, Any]], work_dir: Path, video_path: Path) -> Path:
+    print(f"\n=== GHÉP AUDIO TỪNG CẢNH VÀO VIDEO THÀNH PHẨM ===")
+    clips = []
+    for sc in scenes:
+        clip = sc.get("audio_clip") or (work_dir / "tts-cache" / f"scene_{sc['scene_idx']:02d}.mp3")
+        if clip.exists():
+            clips.append(clip)
+
+    if not clips:
+        print("[warn] Không tìm thấy file audio từng cảnh, giữ nguyên video không tiếng.")
+        return video_path
+
+    concat_list = work_dir / "audio_concat_list.txt"
+    with open(concat_list, "w", encoding="utf-8") as f:
+        for c in clips:
+            f.write(f"file '{c.resolve().as_posix()}'\n")
+
+    full_audio = work_dir / "full_narration.mp3"
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    subprocess.run([
+        ffmpeg, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+        "-i", str(concat_list), "-c:a", "libmp3lame", "-b:a", "192k", str(full_audio)
+    ], check=True)
+    concat_list.unlink(missing_ok=True)
+
+    final_with_voice = video_path.with_name(f"{video_path.stem}_voice.mp4")
+    tts.mux(video_path, full_audio, final_with_voice)
+    print(f"[ok] Đã ghép thành công audio từng cảnh vào video: {final_with_voice.name}")
+    return final_with_voice
 
 
 # ── BƯỚC 1: DÙNG LLM SINH PROMPT & LƯU CACHE (CHẠY TIẾP TỤC) ──
@@ -852,6 +1062,10 @@ def main():
     # Nếu truyền vào là thư mục -> mọi thao tác và file xuất ra nằm ngay trong thư mục đó
     if raw_input.is_dir():
         project_dir = raw_input
+        # Tự động phòng vệ nếu bị truyền nhầm thư mục con tts-cache hoặc .make_video_v2
+        if project_dir.name in ("tts-cache", ".make_video_v2") and (project_dir.parent / "text.txt").exists():
+            project_dir = project_dir.parent
+
         text_candidates = [
             project_dir / "text.txt",
             project_dir / "script.txt",
@@ -861,30 +1075,33 @@ def main():
         project_dir = raw_input.parent
         text_file = raw_input if raw_input.suffix.lower() == ".txt" else None
 
-    # Tìm deepgram.json
+    # Nạp bổ sung cấu hình .env nếu trong thư mục dự án có file .env riêng
+    local_env = load_env(project_dir)
+    ENV.update(local_env)
+
+    # Tìm deepgram.json (chỉ tìm trong thư mục dự án hiện tại, không bao giờ lấy từ thư mục khác)
     dg_candidates = [
         project_dir / ".make_video_v2" / "deepgram.json",
         project_dir / "deepgram.json",
-        ROOT_DIR / ".make_video_v2" / "deepgram.json",
-        ROOT_DIR / "deepgram.json",
     ]
     dg_path = next((f for f in dg_candidates if f.exists()), None)
 
-    # Tìm master_tts.wav / mp3
+    # Tìm master_tts.wav / mp3 (chỉ tìm trong thư mục dự án hiện tại)
     audio_candidates = [
         project_dir / "master_tts.wav",
         project_dir / "master_tts.mp3",
         project_dir / ".make_video_v2" / "master_tts.wav",
         project_dir / ".make_video_v2" / "master_tts.mp3",
-        ROOT_DIR / "master_tts.wav",
     ]
     master_audio = next((f for f in audio_candidates if f.exists()), None)
 
     if text_file:
-        if not dg_path:
-            print("Lỗi: Đã có text.txt nhưng không tìm thấy deepgram.json (trong .make_video_v2/ hoặc cùng thư mục) để khớp mốc thời gian!")
-            sys.exit(1)
-        scenes = load_scenes_from_text_file(text_file, dg_path)
+        if master_audio and dg_path:
+            # Có master_tts và có deepgram.json -> dùng timeline deepgram cắt master_tts
+            scenes = load_scenes_from_text_file(text_file, dg_path)
+        else:
+            # Không có master_tts.wav -> tạo audio từng đoạn qua API TTS, lấy audio duration làm thời lượng cảnh
+            scenes = load_scenes_from_tts(text_file, project_dir)
     elif dg_path:
         print("=== PHÂN TÍCH DEEPGRAM & LẬP KẾ HOẠCH CẢNH ===")
         scenes = split_deepgram(dg_path)
@@ -964,15 +1181,19 @@ def main():
     final_video = project_dir / "final_video.mp4"
     concat_videos(rendered_videos, final_video)
 
-    # 5. Cắt audio từ master_tts.wav ghép vào video
+    # 5. Ghép audio vào video
     if master_audio and master_audio.exists():
         audio_clip = extract_audio_from_master(scenes, master_audio, project_dir)
         final_with_voice = project_dir / "final_video_voice.mp4"
         tts.mux(final_video, audio_clip, final_with_voice)
         print(f"\n🎉 HOÀN THÀNH TOÀN BỘ!")
         print(f"Video thành phẩm có âm thanh: {final_with_voice.resolve()}")
+    elif any(sc.get("audio_clip") for sc in scenes):
+        final_with_voice = concat_scene_audios_and_mux(scenes, project_dir, final_video)
+        print(f"\n🎉 HOÀN THÀNH TOÀN BỘ!")
+        print(f"Video thành phẩm có âm thanh: {final_with_voice.resolve()}")
     else:
-        print(f"\n[Lưu ý] Không tìm thấy file master_tts.wav trong folder, xuất video không tiếng: {final_video.resolve()}")
+        print(f"\n[Lưu ý] Không có audio, xuất video không tiếng: {final_video.resolve()}")
 
 
 if __name__ == "__main__":
