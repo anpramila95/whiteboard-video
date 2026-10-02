@@ -436,8 +436,8 @@ class RegionStreamRenderer:
                     # Chỉ cập nhật nội dung thực tế (nét, chữ, màu), giữ nguyên nền canvas đồng nhất không bị giật
                     self.drawn[self.foreground_pixels & allowed] = self.color_img[self.foreground_pixels & allowed]
 
-            # 凝视：补到 total_ms，并确保结尾至少停留 0.5s 完整原图
-            gaze_until = max(total_ms, cur_ms + 500)
+            # 凝视：补到 đúng total_ms (không cộng thêm 500ms thừa làm lệch audio)
+            gaze_until = total_ms
             if cfg.color_weight == 0:
                 self.drawn[self.foreground_pixels] = self.color_img[self.foreground_pixels]
             else:

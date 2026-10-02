@@ -806,9 +806,9 @@ def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_s
     cur_seq = 1
     cur_timeline_ms = 0
 
-    # 1. Title trên đỉnh: vẽ nhanh trước (0.8s - 1.5s), chiều từ trái sang phải
+    # 1. Title trên đỉnh: vẽ lướt nhanh gọn (0.35s - 0.6s) để kịp khớp giọng đọc ngay cột 1
     if top_split_y is not None:
-        title_dur_ms = min(1500, max(800, int(total_ms * 0.10)))
+        title_dur_ms = min(600, max(350, int(total_ms * 0.035)))
         elements.append({
             "id": f"elem_{cur_seq}",
             "label": "Tiêu đề trên",
@@ -834,12 +834,16 @@ def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_s
     # 2. Nội dung thân: tự động tìm khe hở tự nhiên giữa các cột bằng OpenCV
     cols = _detect_column_slices(img_bgr, top_split_y)
     n_splits = len(cols)
-    body_dur_ms = max(1000, total_ms - cur_timeline_ms)
+
+    # Chừa 300ms ở cuối cảnh để người xem chiêm ngưỡng tranh hoàn thiện trước khi chuyển cảnh
+    scene_hold_ms = min(400, max(250, int(total_ms * 0.025)))
+    content_target_ms = max(cur_timeline_ms + 1000, total_ms - scene_hold_ms)
+    body_dur_ms = max(1000, content_target_ms - cur_timeline_ms)
 
     # Phân bổ cues thông minh theo ngữ nghĩa câu và khoảng dừng tự nhiên
     buckets = _partition_cues_by_sentences(cues, n_splits, body_dur_ms, scene_start, cur_timeline_ms)
 
-    # Phân bổ thời gian chuẩn xác, không bao giờ vượt quá total_ms
+    # Phân bổ thời gian chuẩn xác, cột cuối kết thúc tại content_target_ms
     target_bucket_ms = body_dur_ms // n_splits
     for i in range(n_splits):
         b = buckets[i]
@@ -847,14 +851,14 @@ def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_s
         rem_columns = n_splits - i
 
         if rem_columns == 1:
-            dur_ms = max(500, total_ms - cur_timeline_ms)
+            dur_ms = max(500, content_target_ms - cur_timeline_ms)
         else:
             if b:
                 b_end_ms = int((b[-1]["end"] - scene_start) * 1000)
                 dur_ms = max(800, b_end_ms - cur_timeline_ms)
             else:
                 dur_ms = target_bucket_ms
-            max_allowed = (total_ms - cur_timeline_ms) - (rem_columns - 1) * 800
+            max_allowed = (content_target_ms - cur_timeline_ms) - (rem_columns - 1) * 800
             dur_ms = max(800, min(dur_ms, max_allowed))
 
         start_ms = cur_timeline_ms
