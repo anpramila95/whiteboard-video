@@ -1711,9 +1711,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--out-dir", default="./out", help="输出目录 (默认: ./out)")
     p.add_argument("--total-ms", type=int, default=10000, help="视频总时长，单位毫秒 (默认: 10000)")
     p.add_argument("--bare-tip", action="store_true", help="不叠加笔尖/手部覆盖")
+    p.add_argument("--no-hand", action="store_true", help="Không hiển thị bàn tay/bút vẽ (chỉ hiện các pixel tự vẽ)")
     p.add_argument(
         "--pen-image", default=str(DEFAULT_HAND_PNG),
-        help="自定义笔尖/手部素材路径 (默认: skill 内置 drawing-hand.png)",
+        help="自定义笔尖/手部素材路径 (传 'none' để tắt bút vẽ, mặc định: drawing-hand.png)",
     )
     p.add_argument("--fps", type=int, default=None, help="覆盖默认帧率")
     p.add_argument("--grid-edge", type=int, default=None, help="覆盖默认网格边长")
@@ -1787,8 +1788,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     raw_path = out_dir / f"stream_{ts}.mp4"
     h264_path = out_dir / f"stream_{ts}_h264.mp4"
 
-    pen_png = Path(args.pen_image) if args.pen_image else None
-    renderer = StreamBoardRenderer(image_bgr, cfg, pen_png, args.bare_tip)
+    bare_tip = args.bare_tip or args.no_hand or (args.pen_image and args.pen_image.lower() in ("none", "false", "0", "off"))
+    pen_png = None if bare_tip else (Path(args.pen_image) if args.pen_image else None)
+    renderer = StreamBoardRenderer(image_bgr, cfg, pen_png, bare_tip)
     print(f"  输入: {args.image}")
     print(f"  输出尺寸: {renderer.out_w}x{renderer.out_h}, 帧率: {cfg.fps}")
 

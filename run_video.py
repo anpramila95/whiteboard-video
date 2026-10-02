@@ -45,6 +45,9 @@ STYLE_PREFIX = (
 # "wipe"   : Đi nét trước, sau đó quét lớp màu từ trên xuống dưới
 DEFAULT_COLOR_MODE = "brush"
 
+# TÙY CHỌN BÀN TAY / BÚT VẼ: True là vẽ kèm bàn tay, False là tắt tay (chỉ hiện pixel tự xuất hiện)
+DEFAULT_SHOW_HAND = True
+
 
 def load_env() -> dict[str, str]:
     env_vars = {}
@@ -677,7 +680,13 @@ def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_s
 
 
 # ── BƯỚC 4: RENDER TỪNG CẢNH ──
-def render_scene_video(img_path: Path, scene: dict[str, Any], output_mp4: Path, color_mode: str = "brush") -> Path:
+def render_scene_video(
+    img_path: Path,
+    scene: dict[str, Any],
+    output_mp4: Path,
+    color_mode: str = "brush",
+    show_hand: bool = DEFAULT_SHOW_HAND,
+) -> Path:
     img_bgr = _imread_any(str(img_path))
     if img_bgr is None:
         raise FileNotFoundError(f"Không thể đọc ảnh: {img_path}")
@@ -727,10 +736,10 @@ def render_scene_video(img_path: Path, scene: dict[str, Any], output_mp4: Path, 
         image_bgr=img_bgr,
         annotation=ann_data,
         cfg=cfg,
-        hand_png=DEFAULT_HAND_PNG,
-        bare_tip=False,
+        hand_png=DEFAULT_HAND_PNG if show_hand else None,
+        bare_tip=not show_hand,
     )
-    
+
     raw_mp4 = output_mp4.with_name(f"{output_mp4.stem}_raw.mp4")
     renderer.render_to(raw_mp4, total_ms=scene["duration_ms"])
     final = transcode_h264(raw_mp4, output_mp4)
@@ -828,6 +837,12 @@ def main():
         sys.exit(1)
 
     force = "--force" in sys.argv
+    if "--no-hand" in sys.argv or "--bare-tip" in sys.argv:
+        show_hand = False
+    elif "--show-hand" in sys.argv or "--hand" in sys.argv:
+        show_hand = True
+    else:
+        show_hand = DEFAULT_SHOW_HAND
     limit = None
     for arg in sys.argv[2:]:
         if arg.isdigit():
@@ -929,8 +944,8 @@ def main():
 
     def _render_worker(task):
         task_i, task_img_p, task_sc, task_vid_p = task
-        print(f"\n[Bắt đầu render] Cảnh {task_sc['scene_idx']:02d}/{len(scenes)} ({task_sc['duration_ms']/1000:.1f}s, mode={color_mode})...")
-        out_v = render_scene_video(task_img_p, task_sc, task_vid_p, color_mode=color_mode)
+        print(f"\n[Bắt đầu render] Cảnh {task_sc['scene_idx']:02d}/{len(scenes)} ({task_sc['duration_ms']/1000:.1f}s, mode={color_mode}, hand={show_hand})...")
+        out_v = render_scene_video(task_img_p, task_sc, task_vid_p, color_mode=color_mode, show_hand=show_hand)
         print(f"\n[Xong] Cảnh {task_sc['scene_idx']:02d}: {task_vid_p.name}")
         return task_i, out_v
 
