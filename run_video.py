@@ -508,6 +508,71 @@ def _detect_column_slices(img_bgr: np.ndarray, top_y: int | None) -> list[tuple[
     return [(0, x1), (x1, x2), (x2, w)]
 
 
+def _partition_cues_by_sentences(
+    cues: list[dict[str, Any]],
+    n_splits: int,
+    body_dur_ms: int,
+    scene_start: float,
+    body_start_ms: int,
+) -> list[list[dict[str, Any]]]:
+    """
+    Phân bổ cues vào các cột bám theo dấu câu (。, です, ます, 、, khoảng lặng)
+    để không bao giờ cắt đôi câu nói hoặc ý nghĩa giữa chừng.
+    """
+    if not cues or n_splits <= 1:
+        return [cues]
+    m = len(cues)
+    if m <= n_splits:
+        return [[c] for c in cues] + [[] for _ in range(n_splits - m)]
+
+    body_dur_s = body_dur_ms / 1000.0
+    body_start_s = scene_start + (body_start_ms / 1000.0)
+    target_dur = body_dur_s / n_splits
+    target_times = [body_start_s + target_dur * (k + 1) for k in range(n_splits - 1)]
+
+    split_indices = []
+    last_idx = 0
+    for s_idx, t_target in enumerate(target_times):
+        best_j = last_idx
+        best_score = float("inf")
+        min_j = last_idx
+        max_j = m - (n_splits - 1 - s_idx)
+        for j in range(min_j, max_j):
+            c = cues[j]
+            next_c = cues[j + 1]
+            end_t = c["end"]
+            time_diff = abs(end_t - t_target)
+
+            bonus = 0.0
+            txt = c.get("text", "").strip()
+            if any(p in txt for p in ["。", "！", "？", "!", "?"]):
+                bonus += 2.5
+            elif any(txt.endswith(w) for w in ["です", "ます", "でした", "ました"]):
+                bonus += 2.0
+            elif any(p in txt for p in ["、", ",", "：", ":"]):
+                bonus += 1.0
+
+            pause = next_c["start"] - c["end"]
+            if pause > 0.15:
+                bonus += min(1.5, pause * 2.0)
+
+            score = time_diff - bonus
+            if score < best_score:
+                best_score = score
+                best_j = j
+
+        split_indices.append(best_j + 1)
+        last_idx = best_j + 1
+
+    groups = []
+    prev = 0
+    for idx in split_indices:
+        groups.append(cues[prev:idx])
+        prev = idx
+    groups.append(cues[prev:])
+    return groups
+
+
 # ── BƯỚC TẠO ANNOTATION KHỚP VỚI TIMELINE DEEPGRAM GỐC ──
 def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_start: float, total_ms: int) -> dict[str, Any]:
     h, w = img_bgr.shape[:2]
@@ -551,13 +616,8 @@ def auto_detect_regions(img_bgr: np.ndarray, cues: list[dict[str, Any]], scene_s
     n_splits = len(cols)
     body_dur_ms = max(1000, total_ms - cur_timeline_ms)
 
-    # Phân bổ cues đều theo số cột
-    buckets: list[list[dict[str, Any]]] = [[] for _ in range(n_splits)]
-    total_dur_s = max(1.0, total_ms / 1000.0)
-    for c in cues:
-        b_idx = int((c["start"] - scene_start) / total_dur_s * n_splits)
-        b_idx = min(n_splits - 1, max(0, b_idx))
-        buckets[b_idx].append(c)
+    # Phân bổ cues thông minh theo ngữ nghĩa câu và khoảng dừng tự nhiên
+    buckets = _partition_cues_by_sentences(cues, n_splits, body_dur_ms, scene_start, cur_timeline_ms)
 
     # Phân bổ thời gian chuẩn xác, không bao giờ vượt quá total_ms
     target_bucket_ms = body_dur_ms // n_splits
